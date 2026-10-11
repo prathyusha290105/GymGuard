@@ -2,218 +2,274 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Default deny
+    // Default deny all
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
+    // Connection testing
+    match /test/{docId} {
+      allow read, write: if true;
     }
 
-    function isBootstrappedAdmin() {
-      return (
-        isSignedIn() &&
-        (request.auth.token.email == 'morthalaprathyusha@gmail.com' ||
-         request.auth.token.email == 'owner@gymguard.demo')
-      );
+    // ==========================================
+    // Security Helper Functions
+    // ==========================================
+    function isSignedIn() {
+      return request.auth != null;
     }
 
     function isDemoGym(gymId) {
       return gymId == 'gym-01';
     }
 
+    function isBootstrappedAdmin() {
+      return isSignedIn() &&
+        (request.auth.token.email == 'morthalaprathyusha@gmail.com' ||
+         request.auth.token.email == 'owner@gymguard.demo');
+    }
+
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    function isGymStaffOrOwner(gymId) {
-      return isBootstrappedAdmin() || isDemoGym(gymId) || (
-        isSignedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().gymId == gymId &&
-        (getUserData().role == 'GYM_OWNER' || getUserData().role == 'STAFF' || getUserData().role == 'SUPER_ADMIN')
-      );
+    function hasUserDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserGymId() {
+      return hasUserDoc() ? getUserData().gymId : '';
+    }
+
+    function getUserRole() {
+      return hasUserDoc() ? getUserData().role : '';
+    }
+
+    function getUserMemberId() {
+      return hasUserDoc() && ('memberId' in getUserData()) ? getUserData().memberId : '';
     }
 
     function isGymOwner(gymId) {
-      return isBootstrappedAdmin() || isDemoGym(gymId) || (
-        isSignedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().gymId == gymId &&
-        (getUserData().role == 'GYM_OWNER' || getUserData().role == 'SUPER_ADMIN')
+      return isDemoGym(gymId) || isBootstrappedAdmin() || (
+        isSignedIn() && hasUserDoc() && getUserGymId() == gymId &&
+        (getUserRole() == 'GYM_OWNER' || getUserRole() == 'SUPER_ADMIN')
       );
     }
 
-    // Users
+    function isGymStaffOrOwner(gymId) {
+      return isDemoGym(gymId) || isBootstrappedAdmin() || (
+        isSignedIn() && hasUserDoc() && getUserGymId() == gymId &&
+        (getUserRole() == 'GYM_OWNER' || getUserRole() == 'STAFF' || getUserRole() == 'SUPER_ADMIN')
+      );
+    }
+
+    function isMemberSelf(memberId) {
+      return isSignedIn() && (
+        request.auth.uid == memberId ||
+        (hasUserDoc() && getUserMemberId() == memberId)
+      );
+    }
+
+    // ==========================================
+    // Collections
+    // ==========================================
+
+    // Users: Profiles and roles
     match /users/{userId} {
-      allow read: if isBootstrappedAdmin() || (
-        isSignedIn() && (
+      allow read: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (isSignedIn() && (
           request.auth.uid == userId ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-           resource.data.gymId == getUserData().gymId &&
-           (getUserData().role == 'GYM_OWNER' || getUserData().role == 'STAFF' || getUserData().role == 'SUPER_ADMIN'))
+          (hasUserDoc() && resource.data.gymId == getUserGymId() && isGymStaffOrOwner(resource.data.gymId))
+        ));
+
+      // Self-registration allowed, but cannot self-grant GYM_OWNER or SUPER_ADMIN unless bootstrapped admin
+      allow create: if isBootstrappedAdmin() || (
+        isSignedIn() && request.auth.uid == userId && (
+          request.resource.data.role == 'MEMBER' ||
+          request.resource.data.role == 'STAFF' ||
+          isDemoGym(request.resource.data.gymId)
         )
-      );
-      allow create: if isBootstrappedAdmin() || isSignedIn() || request.resource.data.gymId == 'gym-01';
+      ) || (request.resource != null && isDemoGym(request.resource.data.gymId));
+
+      // Role Elevation Prevention: Users cannot change their own role or gymId without being Owner/Admin
       allow update: if isBootstrappedAdmin() || (
-        isSignedIn() && (
-          request.auth.uid == userId ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-           resource.data.gymId == getUserData().gymId &&
-           getUserData().role == 'GYM_OWNER')
-        )
-      );
-      allow delete: if isBootstrappedAdmin();
+        resource != null && isGymOwner(resource.data.gymId)
+      ) || (
+        isSignedIn() && request.auth.uid == userId && resource != null &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.gymId == resource.data.gymId
+      ) || (resource != null && isDemoGym(resource.data.gymId));
+
+      allow delete: if isBootstrappedAdmin() || (resource != null && isGymOwner(resource.data.gymId));
     }
 
     // Gyms
     match /gyms/{gymId} {
       allow read: if true;
-      allow create, update, delete: if isBootstrappedAdmin() || isDemoGym(gymId) || isGymOwner(gymId);
+      allow create, update, delete: if isDemoGym(gymId) || isBootstrappedAdmin() || isGymOwner(gymId);
     }
 
-    // Members
+    // Members: Sensitive member records
     match /members/{memberId} {
-      allow read: if isBootstrappedAdmin() || isDemoGym(resource.data.gymId) || (
-        isSignedIn() && (
-          isGymStaffOrOwner(resource.data.gymId) ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-           getUserData().memberId == memberId)
-        )
-      );
-      allow create, update, delete: if isBootstrappedAdmin() || (
-        request.resource.data.gymId != null &&
-        (isDemoGym(request.resource.data.gymId) || isGymStaffOrOwner(request.resource.data.gymId))
-      );
+      allow read: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymStaffOrOwner(resource.data.gymId)) ||
+        isMemberSelf(memberId);
+
+      allow create, update: if (request.resource != null && isDemoGym(request.resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (request.resource != null && isGymStaffOrOwner(request.resource.data.gymId));
+
+      allow delete: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymOwner(resource.data.gymId));
     }
 
     // Membership Plans
     match /membershipPlans/{planId} {
       allow read: if true;
-      allow create, update, delete: if isBootstrappedAdmin() || (
-        request.resource.data.gymId != null &&
-        (isDemoGym(request.resource.data.gymId) || isGymOwner(request.resource.data.gymId))
-      );
+      allow create, update, delete: if (request.resource != null && isDemoGym(request.resource.data.gymId)) ||
+        (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (request.resource != null && isGymOwner(request.resource.data.gymId)) ||
+        (resource != null && isGymOwner(resource.data.gymId));
     }
 
-    // Memberships
+    // Memberships: Subscriptions
     match /memberships/{membershipId} {
-      allow read: if isBootstrappedAdmin() || isDemoGym(resource.data.gymId) || (
-        isSignedIn() && (
-          isGymStaffOrOwner(resource.data.gymId) ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-           getUserData().memberId == resource.data.memberId)
-        )
-      );
-      allow create, update, delete: if isBootstrappedAdmin() || (
-        request.resource.data.gymId != null &&
-        (isDemoGym(request.resource.data.gymId) || isGymStaffOrOwner(request.resource.data.gymId))
-      );
+      allow read: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymStaffOrOwner(resource.data.gymId)) ||
+        (resource != null && isMemberSelf(resource.data.memberId));
+
+      allow create, update: if (request.resource != null && isDemoGym(request.resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (request.resource != null && isGymStaffOrOwner(request.resource.data.gymId));
+
+      allow delete: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymOwner(resource.data.gymId));
+    }
+
+    // Membership History
+    match /membershipHistory/{historyId} {
+      allow read: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymStaffOrOwner(resource.data.gymId)) ||
+        (resource != null && isMemberSelf(resource.data.memberId));
+
+      allow create: if (request.resource != null && isDemoGym(request.resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (request.resource != null && isGymStaffOrOwner(request.resource.data.gymId));
+
+      allow update, delete: if isBootstrappedAdmin() || (resource != null && isGymOwner(resource.data.gymId));
     }
 
     // Payments
     match /payments/{paymentId} {
-      allow read: if isBootstrappedAdmin() || isDemoGym(resource.data.gymId) || (
-        isSignedIn() && (
-          isGymStaffOrOwner(resource.data.gymId) ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-           getUserData().memberId == resource.data.memberId)
-        )
-      );
-      allow create, update, delete: if isBootstrappedAdmin() || (
-        request.resource.data.gymId != null &&
-        (isDemoGym(request.resource.data.gymId) || isGymStaffOrOwner(request.resource.data.gymId))
-      );
+      allow read: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymStaffOrOwner(resource.data.gymId)) ||
+        (resource != null && isMemberSelf(resource.data.memberId));
+
+      allow create, update: if (request.resource != null && isDemoGym(request.resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (request.resource != null && isGymStaffOrOwner(request.resource.data.gymId));
+
+      allow delete: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymOwner(resource.data.gymId));
     }
 
     // Attendance
     match /attendance/{attendanceId} {
-      allow read: if isBootstrappedAdmin() || isDemoGym(resource.data.gymId) || (
-        isSignedIn() && (
-          isGymStaffOrOwner(resource.data.gymId) ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-           getUserData().memberId == resource.data.memberId)
-        )
-      );
-      allow create, update, delete: if isBootstrappedAdmin() || (
-        request.resource.data.gymId != null &&
-        (isDemoGym(request.resource.data.gymId) || isGymStaffOrOwner(request.resource.data.gymId))
-      );
+      allow read: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymStaffOrOwner(resource.data.gymId)) ||
+        (resource != null && isMemberSelf(resource.data.memberId));
+
+      allow create, update: if (request.resource != null && isDemoGym(request.resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (request.resource != null && isGymStaffOrOwner(request.resource.data.gymId));
+
+      allow delete: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymOwner(resource.data.gymId));
     }
 
     // Access Logs
     match /accessLogs/{accessLogId} {
-      allow read: if isBootstrappedAdmin() || isDemoGym(resource.data.gymId) || (
-        isSignedIn() && (
-          isGymStaffOrOwner(resource.data.gymId) ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-           getUserData().memberId == resource.data.memberId)
-        )
-      );
-      allow create: if isBootstrappedAdmin() || (
-        request.resource.data.gymId != null &&
-        (isDemoGym(request.resource.data.gymId) || isGymStaffOrOwner(request.resource.data.gymId))
-      );
-      allow update, delete: if isBootstrappedAdmin() || (
-        resource.data.gymId != null &&
-        (isDemoGym(resource.data.gymId) || isGymOwner(resource.data.gymId))
-      );
+      allow read: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymStaffOrOwner(resource.data.gymId)) ||
+        (resource != null && isMemberSelf(resource.data.memberId));
+
+      allow create, update: if (request.resource != null && isDemoGym(request.resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (request.resource != null && isGymStaffOrOwner(request.resource.data.gymId));
+
+      allow delete: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymOwner(resource.data.gymId));
     }
 
-    // Devices
+    // Devices: Turnstiles, Controllers (Owner only write)
     match /devices/{deviceId} {
-      allow read: if isBootstrappedAdmin() || isDemoGym(resource.data.gymId) || (
-        isSignedIn() && isGymStaffOrOwner(resource.data.gymId)
-      );
-      allow create, update, delete: if isBootstrappedAdmin() || (
-        request.resource.data.gymId != null &&
-        (isDemoGym(request.resource.data.gymId) || isGymOwner(request.resource.data.gymId))
-      );
+      allow read: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymStaffOrOwner(resource.data.gymId));
+
+      allow create, update, delete: if (request.resource != null && isDemoGym(request.resource.data.gymId)) ||
+        (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (request.resource != null && isGymOwner(request.resource.data.gymId)) ||
+        (resource != null && isGymOwner(resource.data.gymId));
     }
 
     // Notifications
     match /notifications/{notificationId} {
-      allow read: if isBootstrappedAdmin() || isDemoGym(resource.data.gymId) || (
-        isSignedIn() && (
+      allow read: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && (
           resource.data.recipientId == request.auth.uid ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-           getUserData().memberId == resource.data.recipientId) ||
+          (hasUserDoc() && resource.data.recipientId == getUserMemberId()) ||
           isGymStaffOrOwner(resource.data.gymId)
-        )
-      );
-      allow create: if isBootstrappedAdmin() || isDemoGym(request.resource.data.gymId) || isSignedIn();
-      allow update: if isBootstrappedAdmin() || isDemoGym(resource.data.gymId) || (
-        isSignedIn() && (
-          resource.data.recipientId == request.auth.uid ||
-          isGymStaffOrOwner(resource.data.gymId)
-        )
-      );
-      allow delete: if isBootstrappedAdmin() || (
-        resource.data.gymId != null &&
-        (isDemoGym(resource.data.gymId) || isGymOwner(resource.data.gymId))
-      );
+        ));
+
+      allow create, update: if (request.resource != null && isDemoGym(request.resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        isSignedIn();
+
+      allow delete: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymOwner(resource.data.gymId));
     }
 
-    // Audit Logs
+    // Audit Logs: Sensitive security audit (Owner only read)
     match /auditLogs/{auditId} {
-      allow read: if isBootstrappedAdmin() || isDemoGym(resource.data.gymId) || (
-        isSignedIn() && isGymOwner(resource.data.gymId)
-      );
-      allow create: if isBootstrappedAdmin() || isDemoGym(request.resource.data.gymId) || isSignedIn();
+      allow read: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymOwner(resource.data.gymId));
+
+      allow create: if (request.resource != null && isDemoGym(request.resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        isSignedIn();
+
       allow update, delete: if isBootstrappedAdmin();
     }
 
-    // Settings
+    // Settings (Owner only write)
     match /settings/{settingsId} {
-      allow read: if isBootstrappedAdmin() || isDemoGym(resource.data.gymId) || (
-        isSignedIn() && isGymStaffOrOwner(resource.data.gymId)
-      );
-      allow create, update, delete: if isBootstrappedAdmin() || (
-        request.resource.data.gymId != null &&
-        (isDemoGym(request.resource.data.gymId) || isGymOwner(request.resource.data.gymId))
-      );
+      allow read: if (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (resource != null && isGymStaffOrOwner(resource.data.gymId));
+
+      allow create, update, delete: if (request.resource != null && isDemoGym(request.resource.data.gymId)) ||
+        (resource != null && isDemoGym(resource.data.gymId)) ||
+        isBootstrappedAdmin() ||
+        (request.resource != null && isGymOwner(request.resource.data.gymId)) ||
+        (resource != null && isGymOwner(resource.data.gymId));
     }
   }
 }

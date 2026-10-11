@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   signInWithPopup,
+  signInWithEmailAndPassword,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
   onAuthStateChanged,
@@ -27,6 +28,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const DEMO_SESSION_KEY = 'gymguard_active_session';
+const LOGGED_OUT_KEY = 'gymguard_logged_out';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -74,9 +76,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initAuth = async () => {
       await seedDatabaseIfNeeded();
 
-      // Check stored local demo session first
+      // Check if user explicitly logged out previously
+      const isExplicitlyLoggedOut = localStorage.getItem(LOGGED_OUT_KEY) === 'true';
+
+      // Check stored local demo session
       const stored = localStorage.getItem(DEMO_SESSION_KEY);
-      if (stored) {
+      if (stored && !isExplicitlyLoggedOut) {
         try {
           const parsed = JSON.parse(stored) as UserProfile;
           if (isMounted) {
@@ -120,8 +125,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch (e) {
             console.error('Error fetching/saving user profile', e);
           }
+          setLoading(false);
         } else {
-          // If neither stored session nor firebase user, default to OWNER for immediate preview usability
+          // If explicitly logged out, remain on login page
+          if (isExplicitlyLoggedOut) {
+            setCurrentUser(null);
+            setLoading(false);
+            return;
+          }
+
+          // In dev/preview without explicit logout, provide demo session
           const defaultDemoOwner: UserProfile = {
             uid: 'demo_owner_uid',
             email: DEMO_USERS.OWNER.email,
@@ -133,8 +146,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(defaultDemoOwner));
           setCurrentUser(defaultDemoOwner);
           await fetchGym(DEMO_GYM_ID);
+          setLoading(false);
         }
-        setLoading(false);
       });
 
       return () => {
@@ -150,6 +163,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       localStorage.removeItem(DEMO_SESSION_KEY);
+      localStorage.removeItem(LOGGED_OUT_KEY);
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     } catch (error) {
@@ -162,6 +176,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithDemo = async (role: 'OWNER' | 'STAFF' | 'MEMBER') => {
     setLoading(true);
+    localStorage.removeItem(LOGGED_OUT_KEY);
     let profile: UserProfile;
     if (role === 'OWNER') {
       profile = {
@@ -203,6 +218,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     const cleanEmail = email.trim().toLowerCase();
 
+    // 1. First attempt real Firebase Authentication for production user accounts
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+      if (userCredential.user) {
+        localStorage.removeItem(DEMO_SESSION_KEY);
+        localStorage.removeItem(LOGGED_OUT_KEY);
+        setFirebaseUser(userCredential.user);
+        setLoading(false);
+        return { success: true };
+      }
+    } catch (firebaseErr: any) {
+      // If error is other than wrong-password/user-not-found/invalid-credential, report it
+      const code = firebaseErr?.code;
+      if (code && code !== 'auth/invalid-credential' && code !== 'auth/user-not-found' && code !== 'auth/wrong-password') {
+        console.warn('Firebase signInWithEmailAndPassword notice:', firebaseErr);
+      }
+    }
+
+    // 2. Demo accounts validation
     if (cleanEmail === DEMO_USERS.OWNER.email.toLowerCase() && pass === DEMO_USERS.OWNER.password) {
       await loginWithDemo('OWNER');
       return { success: true };
@@ -219,15 +253,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(false);
     return {
       success: false,
-      error: 'Invalid credentials. Please use the demo credentials provided or sign in with Google.',
+      error: 'Invalid credentials. Sign in with real Firebase account or use demo credentials.',
     };
   };
 
   const logout = async () => {
     setLoading(true);
     localStorage.removeItem(DEMO_SESSION_KEY);
+    localStorage.setItem(LOGGED_OUT_KEY, 'true');
     setCurrentUser(null);
     setCurrentGym(null);
+    setFirebaseUser(null);
     try {
       await firebaseSignOut(auth);
     } catch {

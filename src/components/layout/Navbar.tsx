@@ -57,12 +57,9 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const handleResetData = async () => {
-    if (confirm('Reset and re-seed all demo gym members, logs, and attendance?')) {
-      setSeeding(true);
-      await seedDatabaseIfNeeded();
-      setSeeding(false);
-      window.location.reload();
-    }
+    setSeeding(true);
+    await seedDatabaseIfNeeded();
+    setSeeding(false);
   };
 
   return (

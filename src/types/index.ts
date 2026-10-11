@@ -196,6 +196,8 @@ export interface AppNotification {
   message: string;
   read: boolean;
   notificationKey?: string;
+  deliveryStatus?: 'DELIVERED' | 'FAILED' | 'PARTIAL';
+  failedDeliveries?: Array<{ channel: string; error: string; timestamp: string }>;
   createdAt: string;
 }
 

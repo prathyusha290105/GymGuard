@@ -279,6 +279,20 @@ class MembershipService {
         if (res.sent) notificationsSent++;
         if (res.isDuplicate) duplicatesPrevented++;
 
+        // Notify gym owner of expiration
+        const ownerExpiredKey = `${mshp.membershipId}_OWNER_EXPIRED_${mshp.endDate}`;
+        const resOwnerExp = await notificationService.sendNotification({
+          gymId,
+          recipientId: gymId,
+          recipientRole: 'OWNER',
+          type: 'MEMBERSHIP_EXPIRED',
+          title: `Member Expired: ${memberName}`,
+          message: `${memberName}'s gym membership expired on ${mshp.endDate}. Access has been disabled.`,
+          notificationKey: ownerExpiredKey,
+        });
+        if (resOwnerExp.sent) notificationsSent++;
+        if (resOwnerExp.isDuplicate) duplicatesPrevented++;
+
       } else if (daysLeft <= 7 && daysLeft >= 0) {
         // Expiring soon
         expiringSoonCount++;
@@ -289,16 +303,24 @@ class MembershipService {
           });
         }
 
-        // Send daily reminder for 7, 6, 5, 4, 3, 2, 1 days
-        const reminderDayText = daysLeft === 1
+        // Send daily reminder for 7, 6, 5, 4, 3, 2, 1, 0 days
+        const reminderDayText = daysLeft === 0
+          ? 'today'
+          : daysLeft === 1
           ? 'tomorrow'
           : `in ${daysLeft} days on ${mshp.endDate}`;
 
-        const memberMsg = daysLeft === 1
+        const memberMsg = daysLeft === 0
+          ? `Your gym membership expires today (${mshp.endDate}). Please renew today to prevent turnstile lockout.`
+          : daysLeft === 1
           ? 'Your gym membership expires tomorrow. Please renew your membership to continue accessing the gym.'
           : `Your GymGuard membership expires in ${daysLeft} days on ${mshp.endDate}. Please renew your membership to continue accessing the gym.`;
 
         const ownerMsg = `${memberName}'s gym membership expires ${reminderDayText}.`;
+
+        const titleText = daysLeft === 0
+          ? 'Membership Expires Today'
+          : `Membership Expiring (${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left)`;
 
         const memberKey = `${mshp.membershipId}_EXPIRING_${daysLeft}DAYS_${referenceDateStr}`;
         const ownerKey = `${mshp.membershipId}_OWNER_EXPIRING_${daysLeft}DAYS_${referenceDateStr}`;
@@ -309,7 +331,7 @@ class MembershipService {
           recipientId: mshp.memberId,
           recipientRole: 'MEMBER',
           type: 'MEMBERSHIP_EXPIRING_SOON',
-          title: `Membership Expiring (${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left)`,
+          title: titleText,
           message: memberMsg,
           notificationKey: memberKey,
           recipientContact: member ? { email: member.email, phone: member.phone } : undefined,
@@ -349,6 +371,80 @@ class MembershipService {
       notificationsSent,
       duplicatesPrevented,
     };
+  }
+
+  /**
+   * Get single membership by ID
+   */
+  async getMembershipById(membershipId: string): Promise<Membership | null> {
+    try {
+      const snap = await getDoc(doc(db, 'memberships', membershipId));
+      if (!snap.exists()) return null;
+      return snap.data() as Membership;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, `memberships/${membershipId}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get all memberships for a specific member
+   */
+  async getMembershipsForMember(gymId: string, memberId: string): Promise<Membership[]> {
+    try {
+      const q = query(
+        collection(db, 'memberships'),
+        where('gymId', '==', gymId),
+        where('memberId', '==', memberId)
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map(d => d.data() as Membership);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'memberships');
+      return [];
+    }
+  }
+
+  /**
+   * Create a new membership directly in Firestore
+   */
+  async createMembership(membership: Membership): Promise<Membership> {
+    await setDoc(doc(db, 'memberships', membership.membershipId), {
+      ...membership,
+      freezeReason: membership.freezeReason || '',
+      updatedAt: new Date().toISOString(),
+    });
+    return membership;
+  }
+
+  /**
+   * Update an existing membership in Firestore
+   */
+  async updateMembership(membershipId: string, updates: Partial<Membership>): Promise<void> {
+    const payload = {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    if (payload.freezeReason === undefined && updates.freezeReason === undefined) {
+      delete payload.freezeReason;
+    }
+    await updateDoc(doc(db, 'memberships', membershipId), payload);
+  }
+
+  /**
+   * Delete a membership from Firestore
+   */
+  async deleteMembership(membershipId: string): Promise<void> {
+    const { deleteDoc } = await import('firebase/firestore');
+    await deleteDoc(doc(db, 'memberships', membershipId));
+  }
+
+  /**
+   * Delete a membership plan from Firestore
+   */
+  async deletePlan(planId: string): Promise<void> {
+    const { deleteDoc } = await import('firebase/firestore');
+    await deleteDoc(doc(db, 'membershipPlans', planId));
   }
 }
 

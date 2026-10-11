@@ -256,7 +256,10 @@ export async function seedDemoData(): Promise<void> {
       biometricTemplateId: templateToken,
       createdAt: addDays(def.startOffset),
     };
-    await setDoc(doc(db, 'members', member.memberId), member);
+    const existingMemSnap = await getDoc(doc(db, 'members', def.id));
+    if (!existingMemSnap.exists()) {
+      await setDoc(doc(db, 'members', member.memberId), member);
+    }
 
     // Membership
     const plan = plans.find(p => p.planId === def.planId) || plans[0];
@@ -275,7 +278,10 @@ export async function seedDemoData(): Promise<void> {
       createdAt: addDays(def.startOffset),
       updatedAt: now.toISOString(),
     };
-    await setDoc(doc(db, 'memberships', membership.membershipId), membership);
+    const existingMshp = await getDoc(doc(db, 'memberships', membership.membershipId));
+    if (!existingMshp.exists()) {
+      await setDoc(doc(db, 'memberships', membership.membershipId), membership);
+    }
 
     // Payment record
     const payment: Payment = {
@@ -292,7 +298,10 @@ export async function seedDemoData(): Promise<void> {
       notes: `Payment for ${plan.name}`,
       createdAt: addDays(def.startOffset),
     };
-    await setDoc(doc(db, 'payments', payment.paymentId), payment);
+    const existingPay = await getDoc(doc(db, 'payments', payment.paymentId));
+    if (!existingPay.exists()) {
+      await setDoc(doc(db, 'payments', payment.paymentId), payment);
+    }
   }
 
   // 6. Currently Inside Attendance (e.g. 3 active gym-goers right now)

@@ -1,9 +1,22 @@
 import { MembershipStatus } from '../types';
 
 /**
- * Format a Date to YYYY-MM-DD
+ * Format a Date to YYYY-MM-DD, respecting the gym's specific timezone if specified
  */
-export function formatDateISO(date: Date = new Date()): string {
+export function formatDateISO(date: Date = new Date(), timezone?: string): string {
+  if (timezone) {
+    try {
+      const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      return formatter.format(date);
+    } catch {
+      // Fallback to local time if timezone invalid
+    }
+  }
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');

@@ -56,6 +56,13 @@ export const AttendancePage: React.FC = () => {
     loadData();
   }, [gymId]);
 
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const showFeedback = (type: 'success' | 'error', message: string) => {
+    setFeedback({ type, message });
+    setTimeout(() => setFeedback(null), 4000);
+  };
+
   const handleManualCheckIn = async () => {
     const member = members.find(m => m.memberId === manualMemberId);
     if (!member) return;
@@ -69,18 +76,20 @@ export const AttendancePage: React.FC = () => {
         entryMethod: 'MANUAL',
       });
       setShowManualModal(false);
+      showFeedback('success', `Manual check-in recorded for ${member.fullName}!`);
       await loadData();
-    } catch (err) {
-      alert('Manual check-in error');
+    } catch (err: any) {
+      showFeedback('error', `Manual check-in failed: ${err.message || err}`);
     }
   };
 
   const handleManualCheckOut = async (record: AttendanceRecord) => {
     try {
       await attendanceService.recordCheckOut(record);
+      showFeedback('success', `Check-out recorded for ${record.memberName}!`);
       await loadData();
-    } catch (err) {
-      alert('Manual check-out error');
+    } catch (err: any) {
+      showFeedback('error', `Manual check-out failed: ${err.message || err}`);
     }
   };
 
@@ -99,6 +108,21 @@ export const AttendancePage: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-12">
+      {feedback && (
+        <div
+          className={`flex items-center justify-between p-4 rounded-xl border text-sm transition-all shadow-lg ${
+            feedback.type === 'success'
+              ? 'bg-emerald-950/80 border-emerald-500/30 text-emerald-300'
+              : 'bg-rose-950/80 border-rose-500/30 text-rose-300'
+          }`}
+        >
+          <span>{feedback.message}</span>
+          <button onClick={() => setFeedback(null)} className="text-xs opacity-70 hover:opacity-100 p-1">
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Top Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
         <div>

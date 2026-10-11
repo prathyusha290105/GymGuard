@@ -89,6 +89,16 @@ export const MembershipsPage: React.FC<MembershipsPageProps> = ({ initialRenewId
     loadData();
   }, [gymId]);
 
+  const [feedback, setFeedback] = useState<{
+    type: 'success' | 'error' | 'info';
+    message: string;
+  } | null>(null);
+
+  const showFeedback = (type: 'success' | 'error' | 'info', message: string) => {
+    setFeedback({ type, message });
+    setTimeout(() => setFeedback(null), 4000);
+  };
+
   const handleRenewSubmit = async () => {
     if (!renewTarget) return;
     const plan = plans.find(p => p.planId === renewPlanId) || plans[0];
@@ -105,11 +115,11 @@ export const MembershipsPage: React.FC<MembershipsPageProps> = ({ initialRenewId
         paymentMethod: renewPaymentMethod,
         renewedBy: currentUser?.fullName,
       });
-      alert(`Membership successfully renewed for ${plan.name}!`);
+      showFeedback('success', `Membership successfully renewed for ${plan.name} in Cloud Firestore!`);
       setRenewTarget(null);
       await loadData();
     } catch (err: any) {
-      alert(`Renewal failed: ${err.message || err}`);
+      showFeedback('error', `Renewal failed: ${err.message || err}`);
     }
   };
 
@@ -124,42 +134,48 @@ export const MembershipsPage: React.FC<MembershipsPageProps> = ({ initialRenewId
         memberName: member?.fullName || 'Member',
         reason: freezeReason || 'Temporary hold requested by member',
       });
-      alert('Membership frozen. Biometric door access is now paused.');
+      showFeedback('info', 'Membership frozen in Firestore. Biometric door access is now paused.');
       setFreezeTarget(null);
       await loadData();
     } catch (err: any) {
-      alert(`Freeze failed: ${err.message || err}`);
+      showFeedback('error', `Freeze failed: ${err.message || err}`);
     }
   };
 
   const handleUnfreeze = async (mshp: Membership) => {
-    if (confirm('Unfreeze membership and restore immediate biometric door access?')) {
-      try {
-        await membershipService.unfreezeMembership(mshp);
-        alert('Membership unfrozen and active!');
-        await loadData();
-      } catch (err: any) {
-        alert(`Unfreeze failed: ${err.message || err}`);
-      }
+    try {
+      await membershipService.unfreezeMembership(mshp);
+      showFeedback('success', 'Membership unfrozen and active! Immediate door access restored.');
+      await loadData();
+    } catch (err: any) {
+      showFeedback('error', `Unfreeze failed: ${err.message || err}`);
     }
   };
 
   const handleCreatePlan = async () => {
-    if (!planForm.name) return alert('Plan name required');
+    if (!planForm.name.trim()) {
+      showFeedback('error', 'Plan name is required.');
+      return;
+    }
     const planId = `plan-${planForm.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now().toString().slice(-3)}`;
     const newPlan: MembershipPlan = {
       planId,
       gymId,
-      name: planForm.name,
+      name: planForm.name.trim(),
       description: planForm.description,
       durationDays: Number(planForm.durationDays),
       price: Number(planForm.price),
       active: true,
       createdAt: new Date().toISOString(),
     };
-    await membershipService.savePlan(newPlan);
-    setShowPlanModal(false);
-    await loadData();
+    try {
+      await membershipService.savePlan(newPlan);
+      showFeedback('success', `Plan "${newPlan.name}" saved to Cloud Firestore!`);
+      setShowPlanModal(false);
+      await loadData();
+    } catch (err: any) {
+      showFeedback('error', `Failed to save plan: ${err.message || err}`);
+    }
   };
 
   const filteredMemberships = memberships.filter(m => {
@@ -170,6 +186,29 @@ export const MembershipsPage: React.FC<MembershipsPageProps> = ({ initialRenewId
 
   return (
     <div className="space-y-6 pb-12">
+      {/* Status Feedback Toast Banner */}
+      {feedback && (
+        <div
+          className={`flex items-center justify-between p-4 rounded-xl border text-sm transition-all shadow-lg ${
+            feedback.type === 'success'
+              ? 'bg-emerald-950/80 border-emerald-500/30 text-emerald-300'
+              : feedback.type === 'error'
+              ? 'bg-rose-950/80 border-rose-500/30 text-rose-300'
+              : 'bg-cyan-950/80 border-cyan-500/30 text-cyan-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {feedback.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
+            {feedback.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />}
+            {feedback.type === 'info' && <AlertCircle className="w-5 h-5 text-cyan-400 shrink-0" />}
+            <span>{feedback.message}</span>
+          </div>
+          <button onClick={() => setFeedback(null)} className="text-xs opacity-70 hover:opacity-100 p-1">
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Top Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
         <div>

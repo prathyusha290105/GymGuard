@@ -44,13 +44,19 @@ export const StaffPage: React.FC = () => {
     loadStaff();
   }, [gymId]);
 
+  const [formError, setFormError] = useState<string | null>(null);
+
   const handleAddStaff = async () => {
-    if (!newStaff.fullName || !newStaff.email) return alert('Name & email required');
+    if (!newStaff.fullName.trim() || !newStaff.email.trim()) {
+      setFormError('Name and email are required');
+      return;
+    }
+    setFormError(null);
     const uid = `staff_${Date.now()}`;
     const userProf: UserProfile = {
       uid,
-      email: newStaff.email,
-      fullName: newStaff.fullName,
+      email: newStaff.email.trim(),
+      fullName: newStaff.fullName.trim(),
       role: newStaff.role,
       gymId,
       createdAt: new Date().toISOString(),

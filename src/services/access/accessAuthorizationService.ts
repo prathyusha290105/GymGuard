@@ -39,7 +39,16 @@ class AccessAuthorizationService {
   async authorizeAccess(params: AuthorizeAccessRequest): Promise<AccessDecision> {
     const { gymId, memberId, deviceId, direction = 'IN', source = 'BIOMETRIC_READER' } = params;
     const now = new Date();
-    const todayStr = formatDateISO(now);
+    let gymTimezone = 'America/New_York';
+    try {
+      const gymSnap = await getDoc(doc(db, 'gyms', gymId));
+      if (gymSnap.exists() && gymSnap.data().timezone) {
+        gymTimezone = gymSnap.data().timezone;
+      }
+    } catch {
+      // Use fallback timezone
+    }
+    const todayStr = formatDateISO(now, gymTimezone);
     const logId = `log_${now.getTime()}_${Math.random().toString(36).substring(2, 6)}`;
 
     // Check device status
@@ -336,10 +345,10 @@ class AccessAuthorizationService {
     const log: AccessLog = {
       accessLogId: logId,
       gymId,
-      memberId,
-      memberName,
-      deviceId,
-      deviceName,
+      memberId: memberId || 'UNKNOWN_MEMBER',
+      memberName: memberName || 'Unknown Individual',
+      deviceId: deviceId || '',
+      deviceName: deviceName || 'Entrance Reader',
       result,
       reason,
       direction,

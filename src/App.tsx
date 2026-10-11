@@ -39,9 +39,31 @@ function AppContent() {
     return <LoginPage onLoginSuccess={() => setActiveTab('dashboard')} />;
   }
 
-  // Handle redirect if member logs in
+  // Role-based route protection guards
   const isMember = currentUser.role === 'MEMBER';
-  const effectiveTab = isMember && activeTab === 'dashboard' ? 'member-portal' : activeTab;
+  const isStaff = currentUser.role === 'STAFF';
+
+  const memberAllowedTabs = [
+    'member-portal',
+    'member-membership',
+    'member-attendance',
+    'member-payments',
+    'member-notifications',
+    'member-profile',
+  ];
+  const staffRestrictedTabs = ['staff', 'audit-logs'];
+
+  let effectiveTab = activeTab;
+
+  if (isMember) {
+    if (!memberAllowedTabs.includes(effectiveTab)) {
+      effectiveTab = 'member-portal';
+    }
+  } else if (isStaff) {
+    if (staffRestrictedTabs.includes(effectiveTab)) {
+      effectiveTab = 'dashboard';
+    }
+  }
 
   const handleNavigate = (tab: string, meta?: any) => {
     setActiveTab(tab);

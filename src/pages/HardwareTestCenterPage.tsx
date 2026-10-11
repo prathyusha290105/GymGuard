@@ -188,6 +188,22 @@ export const HardwareTestCenterPage: React.FC = () => {
         </button>
       </div>
 
+      {/* Simulation Safety & Hardware Integration Disclaimer Banner */}
+      <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3">
+        <AlertOctagon className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+        <div className="text-xs space-y-1">
+          <p className="font-bold text-amber-300">
+            SIMULATED HARDWARE LAB: Software-Emulated Relays & Optical Scanners
+          </p>
+          <p className="text-zinc-400">
+            All turnstile relays and optical fingerprint readers displayed here are running in a software emulation layer. Unknown members, expired memberships, disabled devices, and hardware failures strictly maintain a LOCKED door state and are logged to Cloud Firestore.
+          </p>
+          <p className="text-[11px] text-zinc-500 font-mono">
+            Physical deployment requires certified Wiegand 26/34 controllers, TCP/IP relay modules, and vendor SDK credentials. Real hardware integration is not complete.
+          </p>
+        </div>
+      </div>
+
       {/* Hardware Status Display Cards (Section 19: Biometric Device, Door Controller, Door) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* 1. Biometric Device */}

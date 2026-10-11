@@ -40,8 +40,11 @@ export const SettingsPage: React.FC = () => {
     fetchSettings();
   }, [gymId]);
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleSave = async () => {
     if (!gymData || !settingsData) return;
+    setSaveError(null);
     try {
       await updateDoc(doc(db, 'gyms', gymId), { ...gymData, updatedAt: new Date().toISOString() });
       await updateDoc(doc(db, 'settings', `settings-${gymId}`), {
@@ -50,8 +53,8 @@ export const SettingsPage: React.FC = () => {
       });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
-    } catch (e) {
-      alert('Failed to save settings');
+    } catch (e: any) {
+      setSaveError(e.message || 'Failed to save settings to Firestore.');
     }
   };
 

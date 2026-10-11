@@ -40,6 +40,7 @@ class NotificationService {
       try {
         const notifQuery = query(
           collection(db, 'notifications'),
+          where('gymId', '==', gymId),
           where('notificationKey', '==', notificationKey),
           limit(1)
         );
@@ -49,7 +50,7 @@ class NotificationService {
           return { sent: false, isDuplicate: true };
         }
       } catch (error) {
-        handleFirestoreError(error, OperationType.LIST, 'notifications');
+        console.warn('Idempotency query issue, proceeding to send:', error);
       }
     }
 
@@ -58,13 +59,15 @@ class NotificationService {
       notificationId,
       gymId,
       recipientId,
-      recipientRole,
+      recipientRole: recipientRole || 'MEMBER',
       channel: params.channel || 'IN_APP',
       type,
       title,
       message,
       read: false,
       notificationKey: notificationKey || '',
+      deliveryStatus: 'DELIVERED',
+      failedDeliveries: [],
       createdAt: new Date().toISOString(),
     };
 
@@ -75,28 +78,68 @@ class NotificationService {
       handleFirestoreError(error, OperationType.CREATE, `notifications/${notificationId}`);
     }
 
-    // 3. Dispatch external providers in parallel if contact info available
+    // 3. Dispatch external providers in parallel if contact info available, tracking failures
+    const failedDeliveries: Array<{ channel: string; error: string; timestamp: string }> = [];
+
+    const handleExternalSend = async (channel: string, sendPromise: Promise<any>) => {
+      try {
+        await sendPromise;
+      } catch (err: any) {
+        console.warn(`[NotificationService] ${channel} delivery failure:`, err);
+        failedDeliveries.push({
+          channel,
+          error: err?.message || String(err),
+          timestamp: new Date().toISOString(),
+        });
+      }
+    };
+
+    const deliveryPromises: Promise<any>[] = [];
+
     if (recipientContact?.email) {
-      emailProvider.send({
-        recipientId,
-        recipientContact: recipientContact.email,
-        title,
-        message,
-      }).catch(err => console.error('Email send err', err));
+      deliveryPromises.push(
+        handleExternalSend('EMAIL', emailProvider.send({
+          recipientId,
+          recipientContact: recipientContact.email,
+          title,
+          message,
+        }))
+      );
     }
     if (recipientContact?.phone) {
-      smsProvider.send({
-        recipientId,
-        recipientContact: recipientContact.phone,
-        title,
-        message,
-      }).catch(err => console.error('SMS send err', err));
-      whatsAppProvider.send({
-        recipientId,
-        recipientContact: recipientContact.phone,
-        title,
-        message,
-      }).catch(err => console.error('WA send err', err));
+      deliveryPromises.push(
+        handleExternalSend('SMS', smsProvider.send({
+          recipientId,
+          recipientContact: recipientContact.phone,
+          title,
+          message,
+        }))
+      );
+      deliveryPromises.push(
+        handleExternalSend('WHATSAPP', whatsAppProvider.send({
+          recipientId,
+          recipientContact: recipientContact.phone,
+          title,
+          message,
+        }))
+      );
+    }
+
+    if (deliveryPromises.length > 0) {
+      Promise.all(deliveryPromises).then(async () => {
+        if (failedDeliveries.length > 0) {
+          notification.deliveryStatus = failedDeliveries.length === deliveryPromises.length ? 'FAILED' : 'PARTIAL';
+          notification.failedDeliveries = failedDeliveries;
+          try {
+            await updateDoc(doc(db, 'notifications', notificationId), {
+              deliveryStatus: notification.deliveryStatus,
+              failedDeliveries: notification.failedDeliveries,
+            });
+          } catch {
+            // Ignore background update error
+          }
+        }
+      });
     }
 
     return { sent: true, isDuplicate: false, notification };
@@ -105,10 +148,11 @@ class NotificationService {
   /**
    * Fetch unread notifications for a user/member/staff
    */
-  async getNotifications(recipientId: string, limitCount: number = 50): Promise<AppNotification[]> {
+  async getNotifications(recipientId: string, limitCount: number = 50, gymId: string = 'gym-01'): Promise<AppNotification[]> {
     try {
       const q = query(
         collection(db, 'notifications'),
+        where('gymId', '==', gymId),
         where('recipientId', '==', recipientId),
         limit(limitCount)
       );
