@@ -1,0 +1,286 @@
+{
+  "entities": {
+    "Gym": {
+      "title": "Gym",
+      "description": "Tenant entity representing a gym facility",
+      "type": "object",
+      "properties": {
+        "gymId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "address": { "type": "string", "maxLength": 255 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "email": { "type": "string", "maxLength": 100 },
+        "timezone": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["gymId", "name", "email", "createdAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile associated with authentication",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 100 },
+        "fullName": { "type": "string", "maxLength": 100 },
+        "role": { "type": "string", "enum": ["SUPER_ADMIN", "GYM_OWNER", "STAFF", "MEMBER"] },
+        "gymId": { "type": "string", "maxLength": 128 },
+        "memberId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role", "gymId", "createdAt"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Gym member profile and biometric record details",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string", "maxLength": 128 },
+        "gymId": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 100 },
+        "photo": { "type": "string", "maxLength": 1000 },
+        "dateOfBirth": { "type": "string", "maxLength": 20 },
+        "gender": { "type": "string", "enum": ["MALE", "FEMALE", "OTHER"] },
+        "phone": { "type": "string", "maxLength": 30 },
+        "email": { "type": "string", "maxLength": 100 },
+        "address": { "type": "string", "maxLength": 255 },
+        "emergencyContactName": { "type": "string", "maxLength": 100 },
+        "emergencyContactPhone": { "type": "string", "maxLength": 30 },
+        "joiningDate": { "type": "string", "maxLength": 30 },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE", "SUSPENDED", "BLACKLISTED"] },
+        "biometricStatus": { "type": "string", "enum": ["NOT_ENROLLED", "ENROLLED", "DISABLED"] },
+        "biometricTemplateId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["memberId", "gymId", "fullName", "phone", "email", "status", "biometricStatus", "createdAt"]
+    },
+    "MembershipPlan": {
+      "title": "MembershipPlan",
+      "description": "Available membership tiers and packages",
+      "type": "object",
+      "properties": {
+        "planId": { "type": "string", "maxLength": 128 },
+        "gymId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 500 },
+        "durationDays": { "type": "number" },
+        "price": { "type": "number" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["planId", "gymId", "name", "durationDays", "price", "active"]
+    },
+    "Membership": {
+      "title": "Membership",
+      "description": "Active or historical gym subscription for a member",
+      "type": "object",
+      "properties": {
+        "membershipId": { "type": "string", "maxLength": 128 },
+        "memberId": { "type": "string", "maxLength": 128 },
+        "gymId": { "type": "string", "maxLength": 128 },
+        "planId": { "type": "string", "maxLength": 128 },
+        "planName": { "type": "string", "maxLength": 100 },
+        "startDate": { "type": "string", "maxLength": 30 },
+        "endDate": { "type": "string", "maxLength": 30 },
+        "amount": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["PAID", "PENDING", "PARTIAL"] },
+        "status": { "type": "string", "enum": ["NOT_STARTED", "ACTIVE", "EXPIRING_SOON", "EXPIRED", "FROZEN", "SUSPENDED", "CANCELLED"] },
+        "freezeReason": { "type": "string", "maxLength": 255 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["membershipId", "memberId", "gymId", "planId", "startDate", "endDate", "status", "createdAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Financial transaction for membership or fee",
+      "type": "object",
+      "properties": {
+        "paymentId": { "type": "string", "maxLength": 128 },
+        "gymId": { "type": "string", "maxLength": 128 },
+        "memberId": { "type": "string", "maxLength": 128 },
+        "membershipId": { "type": "string", "maxLength": 128 },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["CASH", "UPI", "CARD", "BANK_TRANSFER", "OTHER"] },
+        "transactionId": { "type": "string", "maxLength": 100 },
+        "paymentDate": { "type": "string", "maxLength": 30 },
+        "status": { "type": "string", "enum": ["PAID", "PENDING", "FAILED", "REFUNDED"] },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["paymentId", "gymId", "memberId", "amount", "paymentMethod", "status", "createdAt"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "Daily check-in and check-out logs of gym members",
+      "type": "object",
+      "properties": {
+        "attendanceId": { "type": "string", "maxLength": 128 },
+        "gymId": { "type": "string", "maxLength": 128 },
+        "memberId": { "type": "string", "maxLength": 128 },
+        "deviceId": { "type": "string", "maxLength": 128 },
+        "checkInTime": { "type": "string", "maxLength": 40 },
+        "checkOutTime": { "type": "string", "maxLength": 40 },
+        "durationMinutes": { "type": "number" },
+        "entryMethod": { "type": "string", "enum": ["FINGERPRINT", "ADMIN", "MANUAL", "QR"] },
+        "status": { "type": "string", "enum": ["INSIDE", "COMPLETED"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["attendanceId", "gymId", "memberId", "checkInTime", "entryMethod", "status", "createdAt"]
+    },
+    "AccessLog": {
+      "title": "AccessLog",
+      "description": "Door and biometric scanner access attempt history",
+      "type": "object",
+      "properties": {
+        "accessLogId": { "type": "string", "maxLength": 128 },
+        "gymId": { "type": "string", "maxLength": 128 },
+        "memberId": { "type": "string", "maxLength": 128 },
+        "memberName": { "type": "string", "maxLength": 100 },
+        "deviceId": { "type": "string", "maxLength": 128 },
+        "result": { "type": "string", "enum": [
+          "ACCESS_GRANTED",
+          "DENIED_UNKNOWN_MEMBER",
+          "DENIED_MEMBERSHIP_NOT_STARTED",
+          "DENIED_EXPIRED",
+          "DENIED_FROZEN",
+          "DENIED_SUSPENDED",
+          "DENIED_CANCELLED",
+          "DENIED_INACTIVE_MEMBER",
+          "DENIED_DEVICE_NOT_AUTHORIZED",
+          "DEVICE_ERROR"
+        ]},
+        "reason": { "type": "string", "maxLength": 255 },
+        "direction": { "type": "string", "enum": ["IN", "OUT"] },
+        "source": { "type": "string", "maxLength": 50 },
+        "timestamp": { "type": "string", "maxLength": 40 }
+      },
+      "required": ["accessLogId", "gymId", "result", "timestamp"]
+    },
+    "Device": {
+      "title": "Device",
+      "description": "Hardware controllers and biometric sensor endpoints",
+      "type": "object",
+      "properties": {
+        "deviceId": { "type": "string", "maxLength": 128 },
+        "gymId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "type": { "type": "string", "enum": ["BIOMETRIC", "DOOR_CONTROLLER"] },
+        "location": { "type": "string", "maxLength": 100 },
+        "ipAddress": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["ONLINE", "OFFLINE", "ERROR", "DISABLED"] },
+        "lastSeen": { "type": "string", "maxLength": 40 },
+        "firmware": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["deviceId", "gymId", "name", "type", "status"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System, renewal, and security alerts sent to members and owners",
+      "type": "object",
+      "properties": {
+        "notificationId": { "type": "string", "maxLength": 128 },
+        "gymId": { "type": "string", "maxLength": 128 },
+        "recipientId": { "type": "string", "maxLength": 128 },
+        "recipientRole": { "type": "string", "enum": ["OWNER", "STAFF", "MEMBER"] },
+        "channel": { "type": "string", "enum": ["IN_APP", "EMAIL", "SMS", "WHATSAPP"] },
+        "type": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 100 },
+        "message": { "type": "string", "maxLength": 500 },
+        "read": { "type": "boolean" },
+        "notificationKey": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["notificationId", "gymId", "recipientId", "title", "message", "read", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Administrative actions audit trail",
+      "type": "object",
+      "properties": {
+        "auditId": { "type": "string", "maxLength": 128 },
+        "gymId": { "type": "string", "maxLength": 128 },
+        "actorId": { "type": "string", "maxLength": 128 },
+        "actorName": { "type": "string", "maxLength": 100 },
+        "actorRole": { "type": "string", "maxLength": 50 },
+        "action": { "type": "string", "maxLength": 100 },
+        "resource": { "type": "string", "maxLength": 50 },
+        "resourceId": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "maxLength": 40 },
+        "details": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["auditId", "gymId", "actorId", "action", "resource", "timestamp"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Gym specific operational policies and thresholds",
+      "type": "object",
+      "properties": {
+        "settingsId": { "type": "string", "maxLength": 128 },
+        "gymId": { "type": "string", "maxLength": 128 },
+        "expiryNoticeDays": { "type": "number" },
+        "duplicateScanIntervalSeconds": { "type": "number" },
+        "gracePeriodDays": { "type": "number" },
+        "timezone": { "type": "string", "maxLength": 50 },
+        "emailNotificationsEnabled": { "type": "boolean" },
+        "smsNotificationsEnabled": { "type": "boolean" },
+        "whatsappNotificationsEnabled": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["settingsId", "gymId"]
+    }
+  },
+  "firestore": {
+    "/gyms/{gymId}": {
+      "schema": "Gym",
+      "description": "Gym organization document"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile document linking to auth UID"
+    },
+    "/members/{memberId}": {
+      "schema": "Member",
+      "description": "Gym member registry"
+    },
+    "/membershipPlans/{planId}": {
+      "schema": "MembershipPlan",
+      "description": "Subscription plans offered by gyms"
+    },
+    "/memberships/{membershipId}": {
+      "schema": "Membership",
+      "description": "Member subscriptions"
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Financial transactions"
+    },
+    "/attendance/{attendanceId}": {
+      "schema": "Attendance",
+      "description": "Daily check-in and check-out logs"
+    },
+    "/accessLogs/{accessLogId}": {
+      "schema": "AccessLog",
+      "description": "Access attempt and controller authorization logs"
+    },
+    "/devices/{deviceId}": {
+      "schema": "Device",
+      "description": "Registered biometric and door controller hardware"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "System, member, and staff notifications"
+    },
+    "/auditLogs/{auditId}": {
+      "schema": "AuditLog",
+      "description": "Administrative actions audit trail"
+    },
+    "/settings/{settingsId}": {
+      "schema": "Settings",
+      "description": "Operational settings and rules per gym"
+    }
+  }
+}

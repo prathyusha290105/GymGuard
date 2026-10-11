@@ -1,0 +1,6 @@
+{
+  "name": "GymGuard - Smart Gym Management & Biometric Door Access Control",
+  "description": "Production-grade smart gym management system with biometric fingerprint authentication, automated membership expiry, door access controller, real-time attendance, and role-based access control.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
